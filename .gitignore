@@ -1,0 +1,25 @@
+# build artefacts / extracted resources - never publish TIM's own files
+src/
+out/
+backup/
+origp/
+datascan/
+verify/
+probe/
+ex/
+orig/
+rt/
+
+# TIM binaries and resource containers must never be committed
+*.dll
+*.rdb
+*.gft
+*.gmd
+*.exe
+
+# screenshots may contain other people's messages/avatars
+shots/
+
+# python
+__pycache__/
+*.pyc
