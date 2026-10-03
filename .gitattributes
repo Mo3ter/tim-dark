@@ -1,0 +1,5 @@
+# 统一换行符，避免在不同平台上被自动转换后产生整文件 diff
+* text=auto
+*.py   text eol=lf
+*.ps1  text eol=crlf
+*.md   text eol=lf
