@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Repaint the colours compiled into GF skin files (.gmd).
+"""重绘编译进 GF 皮肤文件（.gmd）里的颜色。
 
-Property records look like  "TD" .. <name> <u32 n> <n bytes>;  for colours n==4 and
-the bytes are a raw little-endian ARGB.  We rewrite those 4 bytes in place (the
-file length never changes, so the TD length/key obfuscation stays valid).
+属性记录形如  "TD" .. <名称> <u32 n> <n 字节>；颜色时 n==4，
+那 4 字节就是原始的小端 ARGB。我们**就地改写这 4 字节**（文件长度不变，
+所以 TD 的长度/异或混淆依然成立）。
 
-Classification is by property name:
+按属性名分类：
 
-  * surface  (background / bkg / border / clrFrom / topground / material ...)
-        light surfaces become dark, dark surfaces are left alone
-  * text     (color / normalColor / textColor / clrText / ...)
-        dark text becomes light, light text is left alone
-  * everything else, saturated accents (links, reds, brand blues) are untouched
+  * 表面色 surface（background / bkg / border / clrFrom / topground / material …）
+        浅色表面变深，本来就深的表面不动
+  * 文字色 text（color / normalColor / textColor / clrText …）
+        深色文字变亮，本来就亮的文字不动
+  * 其余，以及有饱和度的强调色（链接、红色、品牌蓝）一律不动
 
 python gmdark.py <dir> [--only REGEX] [--dry]
 """
@@ -31,24 +31,24 @@ SURFACE_RE = re.compile(
 TEXT_RE = re.compile(r"(color|colour|clr)", re.I)
 NOT_COLOR_RE = re.compile(r"(hiddencolor|maskcolor|keycolor|transparent|colorize|colorindex)", re.I)
 TEXTFILE_RE = re.compile(r"(fonttext|font|text|label|title|nick|name|caption|hint|tip)", re.I)
-# Skins whose whole point is to *compute* a text colour from the surrounding
-# light level (GF::Util::Text::GetTextColor).  Their bare ``color`` is that
-# INPUT, not the literal text colour: a white input yields BLACK text.  These
-# must be fed a dark value so the framework computes white text.
+# 这类皮肤存在的意义就是**根据周围亮度算出一个文字颜色**
+# （GF::Util::Text::GetTextColor）。它们那个裸 ``color`` 是算式的**输入值**，
+# 不是文字颜色本身：输入白色会算出**黑色**文字。所以必须喂它们深色，
+# 框架才会算出白色文字。
 AUTO_RE = re.compile(r"autocolor|autolight", re.I)
 
-# Exact overrides, keyed by (file base name, property name, old value).  Checked
-# before any heuristic so a specific surface can be given exactly the colour the
-# user asked for.  Values are raw little-endian, TIM stores 0xAARRGGBB.
+# 精确指派表，键 =(文件名, 属性名, 原值)。它在所有启发式规则**之前**生效，
+# 这样就能把某个特定的面精确改成用户要求的颜色。值是小端原始值，
+# TIM 存的字节序是 0xAARRGGBB。
 OVERRIDE = {
-    # window frame / title bar  -> RGB(42,42,43)   (was 0xFF161616)
+    # 窗口标题栏      -> RGB(42,42,43)   (原值 0xFF161616)
     ("unify.xml_RecentPage.gmd", "clrFrom", 0xFF161616): 0xFF2A2A2B,
-    # chat content area         -> RGB(30,30,31)   (was 0xFFF5F6F7)
+    # 聊天内容区      -> RGB(30,30,31)   (原值 0xFFF5F6F7)
     ("newchatframe_tim.xml_ChatFrameContent.gmd", "clrFrom", 0xFFF5F6F7): 0xFF1E1E1F,
-    # left session list         -> RGB(47,47,48)   (was 0xFF141414)
+    # 左侧会话列表    -> RGB(47,47,48)   (原值 0xFF141414)
     ("unify.xml_UnifyPanel.gmd", "clrFrom", 0xFF141414): 0xFF2F2F30,
 }
-# fall back: (file, property) with no old value -> every record of that property
+# 后备规则：(文件名, 属性名) 不带原值 -> 该属性的所有记录
 OVERRIDE_ANY = {}
 
 
@@ -75,17 +75,17 @@ def transform(argb, kind):
     mx, mn = max(r, g, b), min(r, g, b)
     L = lum(r, g, b)
     if kind == "autobg":
-        # input level for GF::Util::Text::GetTextColor -- dark in, white out
+        # GF::Util::Text::GetTextColor 的输入亮度 —— 喂深色，出白色
         return (a << 24) | 0x00141414
     if kind == "surface":
         if mx - mn > 26 or L < 128:
             return argb                  # saturated or already dark
         nl = 0x14 + (255 - L) * 0x3C // 255
         return (a << 24) | (nl << 16) | (nl << 8) | nl
-    # text: on the dark surfaces we create, anything that is not essentially
-    # white reads as mud.  The requirement is explicit -- make the text white.
-    # Only genuinely bright accents (link blue, warning red) keep their hue so
-    # links stay recognisable; everything else becomes pure #FFFFFF.
+    # 文字：在我们造出来的深色底上，只要不是接近白的颜色都会糊成一团。
+    # 用户的要求很明确 —— 把文字改成白色。只有真正明亮的强调色
+    # （链接蓝、警告红）保留色相好让链接还能认出来，
+    # 其余一律变成纯 #FFFFFF。
     if mx - mn > 26 and L >= 140:
         return argb                      # bright brand accent, already readable
     if r == 255 and g == 255 and b == 255:
@@ -127,17 +127,17 @@ def patch_file(path, dry=False):
         if not all(32 <= ord(c) < 127 for c in name):
             continue
         off = r["offset"] + r["size"] + 4
-        # The TD scanner and the compact scanner can both land on the same value
-        # bytes.  Processing them twice corrupts the colour (a lightened colour
-        # would be seen again -- now "near white" -- and darkened back), so each
-        # value offset is handled exactly once.
+        # TD 扫描器和紧凑扫描器可能落在同一处值的字节上。
+        # 处理两遍会把颜色改坏（被提亮过的颜色会再被看到一次 ——
+        # 此时已经"接近白" —— 于是又被压暗回去），
+        # 所以每个值的偏移只处理一次。
         if off in done_offsets:
             continue
         done_offsets.add(off)
         old = struct.unpack("<I", bytes(buf[off:off + 4]))[0]
-        # an explicit, user-requested colour wins over every heuristic.  The exact
-        # (file, property, old value) triple is preferred, so translucent overlays
-        # that share a property name are left alone.
+        # 明确指定的颜色优先于所有启发式规则。
+        # (文件名, 属性名, 原值) 三元组优先，
+        # 这样共用同一个属性名的半透明叠加层就不会被误改。
         bn = os.path.basename(path)
         ov = OVERRIDE.get((bn, name, old))
         if ov is None:

@@ -1,57 +1,51 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""patch_dll.py -- make TIM force its own text white, by patching two engine DLLs.
+"""patch_dll.py —— 通过给两个引擎 DLL 打补丁，让 TIM 把自己的文字强制成白色。
 
-Why this is needed
-==================
+为什么必须这么做
+================
 
-TIM 3.5 computes/uses text colours in code, not from its skin resources, in two
-different drawing paths:
+TIM 3.5 的文字颜色大部分**不在皮肤资源里**，而是代码里算出来/写死的，而且分成两条绘制路径：
 
-1. the GF/ark graphics engine (chat message body, session list, ...)
-   ``arkGraphic.dll!arkCanvasSetColor(HGCANVAS*, tagARGB)`` is handed a literal
-   ``0xFF000000`` every time it paints that text.
+1. GF/ark 绘图引擎（聊天正文、会话列表 …）
+   每次画这些字时，传给
+   ``arkGraphic.dll!arkCanvasSetColor(HGCANVAS*, tagARGB)`` 的都是字面量 ``0xFF000000``。
 
-2. plain GDI (group member list, group bulletin body, ...)
-   ``gdi32!SetTextColor`` is called from exactly one place inside ``GF.dll``
-   (return address ``GF.dll+0x13050`` in 3.5.0.22149), again with black.
+2. 普通 GDI（群成员名单、群公告正文 …）
+   ``gdi32!SetTextColor`` 在 ``GF.dll`` 里**只有一个调用点**
+   （3.5.0.22149 里返回地址是 ``GF.dll+0x13050``），传的同样是黑色。
 
-Editing ``.rdb`` resources cannot reach either value - see docs/TRAPS.md.
+改 ``.rdb`` 资源碰不到这两个值 —— 详见 docs/TRAPS.md。
 
-What this script does
-=====================
+这个脚本干了什么
+================
 
-Both patches use the same trick: overwrite a few bytes at the patched site with
-a relative jump to a small code cave placed in the zero padding at the end of
-the ``.text`` section ("slack"), run the original effect, and jump back.
+两处补丁用的是同一招：把补丁点开头的几个字节改成**相对跳转**，跳进一段放在 ``.text`` 段末尾
+**零填充区**（"slack"）里的小代码洞，做完原来的效果再跳回来。
 
-* ``arkGraphic.dll``  site RVA 0x3C11 (the ``mov [eax+198h], edx`` store)
-  cave: ``cmp edx,0FF000000h / jne +5 / mov edx,0FFFFFFFFh`` then the original
-  store and ``ret``.
+* ``arkGraphic.dll``  补丁点 RVA 0x3C11（那条 ``mov [eax+198h], edx`` 存储指令）
+  代码洞：``cmp edx,0FF000000h / jne +5 / mov edx,0FFFFFFFFh``，然后执行原来的存储并 ``ret``。
 
-* ``GF.dll``          site RVA 0x13045 (``mov [ebp-40h],eax`` + the two pushes
-  that set up ``call SetTextColor``)
-  cave: redo the ``mov``, ``push 0FFFFFFFFh`` (colour), ``push eax`` (hdc),
-  then ``jmp`` back to the untouched ``call``.
-  NOTE: the cave must not touch any register - an earlier version did
-  ``mov esi,0FFFFFFFFh`` and TIM refused to start, because ``esi`` is live
-  after the call.
+* ``GF.dll``          补丁点 RVA 0x13045（``mov [ebp-40h],eax`` 加后面两条为
+  ``call SetTextColor`` 准备参数的 push）
+  代码洞：补做那条 ``mov``，``push 0FFFFFFFFh``（颜色），``push eax``（hdc），
+  然后 ``jmp`` 回那条**没有被改动**的 ``call``。
+  注意：代码洞**绝对不能碰任何寄存器** —— 早期版本写了
+  ``mov esi,0FFFFFFFFh``，结果 TIM 直接启动不了，因为 ``esi`` 在那条 call 之后还有用途。
 
-``SetTextColor`` is only ever used for text, so forcing it cannot damage
-backgrounds.  Both jumps are relative, so no relocation table changes are
-needed and the images stay position independent.
+``SetTextColor`` 只用于文字，所以在这里强制成白色不可能弄坏背景。
+两处跳转都是相对寻址，不需要改重定位表，镜像保持位置无关。
 
-Usage
-=====
+用法
+====
 
     python patch_dll.py --tim-dir "C:\\software\\TIM" --status
     python patch_dll.py --tim-dir "C:\\software\\TIM" --apply
     python patch_dll.py --tim-dir "C:\\software\\TIM" --revert
 
-TIM must be closed.  On Windows a *mapped* DLL cannot be written to, and TIM
-leaves a zombie ``TIM.exe`` behind that keeps the mapping alive, so ``--apply``
-falls back to rename-then-replace (image mappings carry FILE_SHARE_DELETE).
-The pristine copies are kept next to the DLLs as ``*.dll.orig``.
+必须先关掉 TIM。Windows 上**已被映射的 DLL 无法写入**，而 TIM 强杀后会留下一个
+僵尸 ``TIM.exe`` 一直持有映射，所以 ``--apply`` 会自动退回"先改名再放新文件"
+（镜像映射带 FILE_SHARE_DELETE）。原始副本会以 ``*.dll.orig`` 的形式留在 DLL 旁边。
 """
 from __future__ import annotations
 
@@ -62,7 +56,7 @@ import struct
 import sys
 import time
 
-# ---------------------------------------------------------------- PE helpers
+# ---------------------------------------------------------------- PE 解析辅助
 
 
 def parse_pe(data: bytes):
@@ -116,9 +110,9 @@ def find_cave(sections, size):
     return off, va + vs
 
 
-# ------------------------------------------------------------------- patches
+# ------------------------------------------------------------------- 补丁定义
 
-# (dll, description, site_rva, original bytes, cave length)
+# (dll, 说明, 补丁点 RVA, 原始字节, 代码洞长度)
 PATCHES = {
     "arkGraphic.dll": {
         "desc": "force chat/list text drawn by the GF engine to white",
@@ -138,17 +132,17 @@ PATCHES = {
 def _cave_ark(base, cave_rva, site_rva):
     """arkGraphic: replace the colour store with a check-then-store, called."""
     cave_va = base + cave_rva
-    # 81 FA imm32 (cmp edx, 0FF000000h)
-    # 75 05       (jne +5)
-    # BA imm32    (mov edx, 0FFFFFFFFh)
-    # 89 90 ...   (original: mov [eax+198h], edx)
+    # 81 FA imm32 (cmp edx, 0FF000000h)   ; 比较颜色
+    # 75 05       (jne +5)                ; 不是纯黑就跳过
+    # BA imm32    (mov edx, 0FFFFFFFFh)   ; 换成纯白
+    # 89 90 ...   (原来那条: mov [eax+198h], edx)
     # C3          (ret)
     body = (b"\x81\xFA" + struct.pack("<I", 0xFF000000) +
             b"\x75\x05" +
             b"\xBA" + struct.pack("<I", 0xFFFFFFFF) +
             bytes.fromhex("899098010000") +
             b"\xC3")
-    # site: call cave ; nop
+    # 补丁点: call 代码洞 ; nop
     site_va = base + site_rva
     rel = cave_va - (site_va + 5)
     patch = b"\xE8" + struct.pack("<i", rel) + b"\x90"
@@ -159,17 +153,17 @@ def _cave_gf(base, cave_rva, site_rva):
     """GF.dll: push white + hdc ourselves, then jump back to the original call."""
     cave_va = base + cave_rva
     site_va = base + site_rva
-    # mov [ebp-40h], eax
-    # push 0FFFFFFFFh
-    # push eax
-    # jmp site+5     (the untouched `call [SetTextColor]`)
+    # mov [ebp-40h], eax   ; 补上被覆盖的那条
+    # push 0FFFFFFFFh      ; 颜色 = 纯白
+    # push eax             ; hdc
+    # jmp site+5     (那条没有被改动的 call [SetTextColor])
     body = (b"\x89\x45\xC0" +
             b"\x68" + struct.pack("<I", 0xFFFFFFFF) +
             b"\x50")
     jmp_at = cave_va + len(body)
     rel_back = (site_va + 5) - (jmp_at + 5)
     body += b"\xE9" + struct.pack("<i", rel_back)
-    # site: jmp cave (5 bytes, overwrites mov+push esi+push eax)
+    # 补丁点: jmp 代码洞（5 字节，覆盖 mov + push esi + push eax）
     patch = b"\xE9" + struct.pack("<i", cave_va - (site_va + 5))
     return cave_va, body, site_va, patch
 
@@ -235,7 +229,7 @@ def apply_one(dll_path, dry=False):
     if len(body) > 32:
         raise SystemExit("%s: cave too large" % name)
 
-    # keep a pristine copy once
+    # 只备份一次原始文件
     orig = dll_path + ".orig"
     if not os.path.exists(orig):
         shutil.copyfile(dll_path, orig)

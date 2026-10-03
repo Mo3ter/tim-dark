@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Scan a .gmd and list every property record together with its raw value.
+"""扫描一个 .gmd，列出所有属性记录及其原始值。
 
-A record is   "TD" 0101 <kind> <?> <strtype> <len:u16> <payload(len)>  and the
-payload is XOR'd with (0xFF ^ (len & 0xFF)).  A property record is normally
-followed by  <u32 n> <n raw bytes>  holding the value (colours are n == 4).
+一条记录长这样：  "TD" 0101 <kind> <?> <strtype> <长度:u16> <载荷(长度)>，
+载荷与 (0xFF ^ (长度 & 0xFF)) 异或。属性记录后面通常跟着
+<u32 n> <n 个原始字节> 作为它的值（颜色时 n == 4）。
 
-python gmdscan.py <file> [--colors] [--props] [--hex]
+python gmdscan.py <文件> [--colors] [--props] [--hex]
 """
 import os
 import re

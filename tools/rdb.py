@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Tencent RDB (resource bundle) unpack / repack.
+"""腾讯 RDB（资源包）解包 / 重打包。
 
-Format (from binbyu/rdbext + reverse engineering):
-  struct rdb_header {           // 36 bytes, #pragma pack(4)
+格式（来自 binbyu/rdbext 加逆向验证）：
+  struct rdb_header {           // 36 字节, #pragma pack(4)
       char  flag[16];           // "531E98204F8542F0"
       int32 item_count;
       int64 header_size;        // == 36
-      int64 item_name_size;     // bytes of the interleaved (name + index) table
+      int64 item_name_size;     // 「名称+索引」交错表的字节数
   };
-  then, for each item, consecutively:
-      wchar_t name[];  // UTF-16LE, NUL terminated
-      struct { int64 offset; int64 size; };   // offset relative to (header_size + item_name_size)
-  then payload area.
+  然后每个条目依次是：
+      wchar_t name[];  // UTF-16LE，以 NUL 结尾
+      struct { int64 offset; int64 size; };   // 偏移相对 (header_size + item_name_size)
+  再往后是数据区。
 
 Usage:
   python rdb.py list   <file.rdb>

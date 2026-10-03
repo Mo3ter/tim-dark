@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Dark-mode repainter for TIM skin bitmaps (.gft / .png / .bmp / .jpg).
+"""TIM 皮肤位图（.gft / .png / .bmp / .jpg）的深色重绘器。
 
-Two transforms, both hue preserving:
+两种变换，都保持色相：
 
-  chrome  -- flips the lightness of *achromatic* pixels only (white backgrounds
-             become dark grey, black glyphs become light grey) and leaves every
-             saturated pixel alone, so logos / emoji / accent art survive.
-  night   -- multiplies lightness by a factor (for photographic art such as the
-             login illustration or the wallpaper skins).
+  chrome  —— 只翻转**无彩色**像素的明度（白底变深灰、黑字变浅灰），
+             有饱和度的像素一律不动，所以 logo / 表情 / 彩色插画都能活下来。
+  night   —— 把明度乘以一个系数（用于照片类素材，比如登录页插画、壁纸皮肤）。
 
 Usage
   python skinpatch.py scan  <dir> [<dir> ...]
@@ -28,7 +26,7 @@ IMG_EXT = (".gft", ".png", ".bmp", ".jpg", ".jpeg", ".gif")
 FLOOR, CEIL = 24, 238      # output range of the chrome flip
 
 
-# --------------------------------------------------------------------------- GFT
+# --------------------------------------------------------------------------- GFT 容器
 def gft_split(data):
     """-> (header_bytes, png_bytes) or (None, None) if it isn't a TGF wrapper."""
     if data[:3] != b"TGF":
@@ -48,7 +46,7 @@ def gft_join(header, png_bytes):
     return header + png_bytes
 
 
-# ------------------------------------------------------------------- transforms
+# ------------------------------------------------------------------- 变换函数
 def _chroma_extremes(px):
     return max(px[0], px[1], px[2]), min(px[0], px[1], px[2])
 
@@ -88,7 +86,7 @@ def night_shift(img, factor=0.40, lift=0):
     return Image.merge("RGBA", (r, g, b, a))
 
 
-# ------------------------------------------------------------------- statistics
+# ------------------------------------------------------------------- 统计
 def stats_of(img):
     im = img.convert("RGBA")
     small = im.copy()
@@ -118,7 +116,7 @@ def encode(img, is_gft):
     return buf.getvalue()
 
 
-# ------------------------------------------------------------------------ main
+# ------------------------------------------------------------------------ 入口
 def iter_files(roots):
     for root in roots:
         for dirpath, _dirs, files in os.walk(root):
@@ -152,8 +150,8 @@ NIGHT_RE = re.compile(
 SKIP_RE = re.compile(
     r"(defalut_head|default_head|qqface|emoji|face_|/face|avatar|head_bkg_highlight"
     r"|mask|topground|headcover)", re.I)
-# Paths whose *colours* are compiled into .gmd files we now patch as well, so
-# nothing needs to be excluded any more.  Kept as an escape hatch.
+# 这些路径的**颜色**是编译进 .gmd 的，而我们现在也一并修正 .gmd 了，
+# 所以不再需要排除任何东西。这里保留作为应急开关。
 EXCLUDE_RE = re.compile(r"(nothing_matches_this)", re.I)
 
 
@@ -169,10 +167,10 @@ def decide(path, base, s):
         return None
     if base.lower().endswith((".jpg", ".jpeg")):
         return "night"
-    # monochrome chrome: white panels, grey frames, black glyphs -> flip
+    # 单色 UI 元素：白色面板、灰色边框、黑色图标 —— 走翻转
     if s["achro"] >= 0.5:
         return "chrome"
-    # colourful art that is much too light for a dark UI -> dim it
+    # 彩色素材，对于深色界面来说太亮了 —— 压暗
     if s["mean_l"] >= 200:
         return "night"
     return None

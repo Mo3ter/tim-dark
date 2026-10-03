@@ -1,103 +1,98 @@
-# File formats (reverse engineered from TIM 3.5.0.22149)
+# 文件格式（从 TIM 3.5.0.22149 逆向得出）
 
-Everything below was derived by inspection; `tools/rdb.py` round-trips real files
-byte-for-byte, which is the strongest evidence that the layout is right.
+下面所有内容都是靠观察推出来的；`tools/rdb.py` 对真实文件能做到**逐字节往返一致**，
+这是格式判断正确的最强证据。
 
-## `.rdb` — resource container
+## `.rdb` —— 资源容器
 
-TIM ships four of them:
-
-```
-Resource.3.5.0.22149\Res.rdb              ~6700 files, images/sounds/scripts
-Resource.3.5.0.22149\Xtml.rdb             ~1550 files, one .gmd per UI page
-Resource.3.5.0.22149\Themes\Default.rdb   ~2200 files, shared skins + theme.xml
-Resource.3.5.0.22149\Data.rdb             avatars/faces only, no .gmd at all
-```
-
-Layout:
+TIM 一共四个：
 
 ```
-0x00  16 bytes   magic  53 1E 98 20 4F 85 42 F0
-0x10  u32        item count
-0x14  i64        header size  (always 36)
-0x1C  i64        name blob size
-0x24  ...        index entries:
-                     UTF-16LE name, NUL terminated
-                     i64 offset      relative to  (36 + name blob size)
-                     i64 size
-...              payload
+Resource.3.5.0.22149\Res.rdb              ~6700 个文件，图片/声音/脚本
+Resource.3.5.0.22149\Xtml.rdb             ~1550 个文件，一个界面页面对应一个 .gmd
+Resource.3.5.0.22149\Themes\Default.rdb   ~2200 个文件，公共皮肤 + theme.xml
+Resource.3.5.0.22149\Data.rdb             只有头像/表情，里面没有任何 .gmd
 ```
 
-Unpack: `python tools/rdb.py unpack FILE.rdb outdir`
-Repack: `python tools/rdb.py pack outdir FILE.rdb --manifest ORIGINAL.rdb`
-
-Repacking with the original as `--manifest` keeps the file order and names of items
-that were not modified, so the round trip is byte-identical.
-
-## `.gft` — a PNG in a wrapper
+布局：
 
 ```
-0x00  3 bytes   'TGF'
-0x10  u32       offset of the PNG payload
-0x1C  'NINE'    present only for nine-patch images; margins follow
-...             standard PNG
+0x00  16 字节    魔数  53 1E 98 20 4F 85 42 F0
+0x10  u32        条目数
+0x14  i64        头部大小（恒为 36）
+0x1C  i64        名称区大小
+0x24  ...        索引条目，每条：
+                     UTF-16LE 名称，以 NUL 结尾
+                     i64 偏移    相对 (36 + 名称区大小)
+                     i64 大小
+...              数据区
 ```
 
-Replacing the PNG payload (keeping the header) is enough to restyle a bitmap.
-`skinpatch.py` does this; `load_png_bytes` here is tolerant about which of the two
-offsets is authoritative.
+解包：`python tools/rdb.py unpack 文件.rdb 输出目录`
+重打包：`python tools/rdb.py pack 输出目录 文件.rdb --manifest 原始.rdb`
 
-## `.gmd` — a compiled skin
+把原始文件作为 `--manifest` 传入，能让所有**没有被修改**的条目保持原来的顺序和名字，
+因此往返结果与原始文件逐字节相同。
 
-A `.gmd` is a serialised control tree with property records. Two encodings coexist:
-
-* **TD records** — marker `TD 01 01`, a kind byte, `00`, a type code and a
-  `u16` length; the payload is XORed with `0xFF ^ (length & 0xFF)`.
-* **compact records** — a single tag byte, a `u16` length, then the payload.
-
-Either way a property looks like:
+## `.gft` —— 包了一层的 PNG
 
 ```
-<name bytes> <u16 length> <payload>
+0x00  3 字节    'TGF'
+0x10  u32       PNG 数据的偏移
+0x1C  'NINE'    仅九宫格图有，后面跟边距
+...             标准 PNG
 ```
 
-and a colour property is exactly 4 payload bytes. `gmdscan.py` finds them; because
-both scanners can hit the same 4 bytes, results must be de-duplicated by the
-**absolute offset of the value** before being rewritten.
+只替换 PNG 数据、保留头部就能改一张位图。`skinpatch.py` 就是这么做的；
+它内置的 `load_png_bytes` 对两个偏移哪个才算权威是容错的。
 
-## `theme.xml` — `Themes\Default.rdb\appframework\config\theme.xml`
+## `.gmd` —— 编译后的皮肤
 
-276 named colours in `<TG name="...">` groups (`TextColor`, `TIMColor`, `Color`,
-`Rich_TextColor`, `BorderColor`, `FCColor`, ...). It looks authoritative and it is
-**not read at runtime** in 3.5 — see TRAPS.md, entry 4. It is still worth patching
-because TIM caches it (entry 5) and some builds do consult the cache.
+`.gmd` 是一棵序列化的控件树，每个节点带属性记录。存在两种编码：
 
-Also note `MaskColor = 0xFF00FF` is the transparency colour key and must never be
-changed.
+* **TD 记录** —— 标记 `TD 01 01`，一个 kind 字节，`00`，一个类型码，然后 `u16` 长度；
+  载荷与 `0xFF ^ (长度 & 0xFF)` 异或。
+* **紧凑记录** —— 一个字节的标签，`u16` 长度，然后载荷。
 
-## Colours
+两种形式下，一个属性都长这样：
 
-TIM stores colours as **`0xAARRGGBB`**. Values read out of a `.gmd` with
-`struct.unpack("<I")` follow that convention, so `0xFF1E1E1F` is `RGB(30,30,31)`.
+```
+<属性名> <u16 长度> <载荷>
+```
 
-## Text colour resolution (why resources are not enough)
+颜色属性的载荷正好 4 字节。`gmdscan.py` 负责把它们找出来；由于两个扫描器可能命中
+同一处 4 字节，结果必须按**值的绝对偏移**去重之后才能改写。
+
+## `theme.xml` —— `Themes\Default.rdb\appframework\config\theme.xml`
+
+`<TG name="...">` 分组（`TextColor`、`TIMColor`、`Color`、`Rich_TextColor`、`BorderColor`、`FCColor` …）
+一共 276 个具名颜色。它看上去很权威，但 **3.5 运行时根本不读它** —— 见 TRAPS.md 第 4 条。
+还是值得改，因为 TIM 会把它缓存起来（第 5 条），部分版本确实会读缓存。
+
+另外注意 `MaskColor = 0xFF00FF` 是透明色键，**永远不能改**。
+
+## 颜色
+
+TIM 的颜色字节序是 **`0xAARRGGBB`**。用 `struct.unpack("<I")` 从 `.gmd` 里读出来的值就遵循这个约定，
+所以 `0xFF1E1E1F` 就是 `RGB(30,30,31)`。
+
+## 文字颜色的三条解析路径（为什么只改资源不够）
 
 ```
                      ┌─────────────────────────────────────────┐
-  AutoColor skins ──►│ GF::Util::Text::GetTextColor(level)     │──► white/black
-  (bare `color` is   │  white level -> BLACK text              │
-   the level input)  └─────────────────────────────────────────┘
+  AutoColor 皮肤 ──► │ GF::Util::Text::GetTextColor(亮度输入)   │──► 白字/黑字
+  （裸 color 是      │  输入为白 -> 算出黑字                    │
+    亮度输入值）      └─────────────────────────────────────────┘
 
                      ┌─────────────────────────────────────────┐
-  chat body/list ───►│ arkGraphic!arkCanvasSetColor(canvas,    │──► literal 0xFF000000
-                     │   0xFF000000)  -- hardcoded             │
+  聊天正文/列表 ────► │ arkGraphic!arkCanvasSetColor(画布,       │──► 写死的 0xFF000000
+                     │   0xFF000000)                           │
                      └─────────────────────────────────────────┘
 
                      ┌─────────────────────────────────────────┐
-  member list /  ───►│ gdi32!SetTextColor(dc, 0xFF000000)      │──► literal black
-  group bulletin     │  called from GF.dll+0x13050             │
+  群成员名/    ────► │ gdi32!SetTextColor(dc, 0xFF000000)      │──► 写死的纯黑
+  群公告正文         │  从 GF.dll+0x13050 调用                  │
                      └─────────────────────────────────────────┘
 ```
 
-Only the first row is reachable from a skin file, and even then the field to edit
-is the *input level*, not the text colour.
+只有第一条能从皮肤文件改到，而且即使改，要改的字段是**输入亮度**，不是文字颜色本身。

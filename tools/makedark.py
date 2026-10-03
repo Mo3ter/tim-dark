@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Turn TIM's appframework/config/theme.xml into a dark palette with white text.
+"""把 TIM 的 appframework/config/theme.xml 改成深色调色板 + 白字。
 
-Policy (user requirement): on the dark surfaces we create, every readable string
-must be pure white (#FFFFFF).  Only genuinely bright accents -- link blue,
-warning red/orange -- keep their hue so links stay recognisable.  Surfaces get
-the dark palette below.
+原则（用户要求）：在我们造出来的深色底上，**每一个可读字符串都必须是纯白 (#FFFFFF)**。
+只有真正明亮的强调色 —— 链接蓝、警告红/橙 —— 保留色相，这样链接还能看出来。
+表面色一律用下面的深色调色板。
 
 Usage: python makedark.py <theme.xml> [--revert]
 """
@@ -16,9 +15,9 @@ import sys
 
 WHITE = "0xffffff"
 
-# (group-name, var-name) -> new value.  group-name None = any group.
+# (组名, 变量名) -> 新值。组名为 None 表示任意组。
 EXPLICIT = {
-    # ---- TIMColor : the surface palette of the TIM shell -------------------
+    # ---- TIMColor：TIM 外壳的表面调色板 ------------------------------------
     ("TIMColor", "WindowBackground"): "0x1a1a1a",
     ("TIMColor", "MainLeft"): "0x2a2a2a",
     ("TIMColor", "MainRight"): "0x1f1f1f",
@@ -33,7 +32,7 @@ EXPLICIT = {
     ("TIMColor", "GrayBkg"): "0x2a2a2a",
     ("TIMColor", "HoverGrayBkg"): "0x333333",
     ("TIMColor", "PushedGrayBkg"): "0x3c3c3c",
-    # text -> white
+    # 文字 → 纯白
     ("TIMColor", "Black"): WHITE,
     ("TIMColor", "DeepGray"): WHITE,
     ("TIMColor", "LightGray"): WHITE,
@@ -41,7 +40,7 @@ EXPLICIT = {
     ("TIMColor", "TextInBlue"): WHITE,
     ("TIMColor", "TextInButtonNormal"): WHITE,
 
-    # ---- Color : generic control surfaces ----------------------------------
+    # ---- Color：通用控件表面 -------------------------------------------------
     ("Color", "Background"): "0x2a2a2a",
     ("Color", "OuterBorder"): "0x3c3c3c",
     ("Color", "CtrlBorderNormal"): "0x4a4a4a",
@@ -69,7 +68,7 @@ EXPLICIT = {
     ("Color", "MenuLeftBar"): "0x2a2a2a",
     ("Color", "EditDisableBackground"): "0x2a2a2a",
 
-    # ---- TextColor / TextColor(TIM) : both groups, same names --------------
+    # ---- TextColor / TextColor(TIM)：两个组，名字相同 ------------------------
     ("TextColor", "Text"): WHITE,
     ("TextColor", "UI"): WHITE,
     ("TextColor", "Disable"): WHITE,
@@ -78,7 +77,7 @@ EXPLICIT = {
     ("TextColor", "Gray2"): WHITE,
     ("TextColor", "WBlogNick"): WHITE,
     ("TextColor", "WBlogWhiteHighlight"): WHITE,
-    # links / warnings keep an identifiable hue, but bright
+    # 链接 / 警告保留能认出来的色相，但提亮
     ("TextColor", "LowLink"): "0x4d94ff",
     ("TextColor", "HighLink"): "0x4d94ff",
     ("TextColor", "HighLinkTips"): "0xff5a3c",
@@ -101,14 +100,14 @@ EXPLICIT = {
     ("TextColor", "NewNormalLinkHighlight"): "0x2bb7f5",
     ("TextColor", "NewNormalLinkPushed"): "0x0da3e5",
 
-    # ---- BorderColor -------------------------------------------------------
+    # ---- BorderColor：边框 ---------------------------------------------------
     ("BorderColor", "Normal"): "0x3c3c3c",
     ("BorderColor", "Focus"): "0x4d8fd0",
     ("BorderColor", "Highlight"): "0x4d8fd0",
     ("BorderColor", "UI"): "0x3c3c3c",
     ("BorderColor", "Tab"): "0x3c3c3c",
 
-    # ---- Rich text ---------------------------------------------------------
+    # ---- 富文本 --------------------------------------------------------------
     ("Rich_TextColor", "Normal"): WHITE,
     ("Rich_TextColor", "Gray"): WHITE,
     ("Rich_TextColor", "Title"): WHITE,
@@ -122,7 +121,7 @@ EXPLICIT = {
     ("Rich_LinkColor", "Heightlight"): "0x4d94ff",
     ("Rich_LinkColor", "Pushed"): "0x4d94ff",
 
-    # ---- misc --------------------------------------------------------------
+    # ---- 杂项 ----------------------------------------------------------------
     ("GBKPopTip_color", "Title"): WHITE,
     ("GBKPopTip_color", "Text"): WHITE,
     ("GBKPopTip_color", "BigText"): WHITE,
@@ -143,7 +142,7 @@ EXPLICIT = {
     ("FCColor", "TextLightBluePushed"): "0x4d94ff",
 }
 
-# colours that must never be touched
+# 绝对不能碰的颜色
 PROTECT = {("Color", "MaskColor")}
 
 TG_RE = re.compile(r"<TG([^>]*)>")
