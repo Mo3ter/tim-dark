@@ -22,6 +22,9 @@ python tools/launch_tim.py --tim-dir 'TIM安装目录' --appdata-dir '实际AppD
 它不修改或关闭 TIM 的文件检查。必须在启动阶段应用，因为 AppData 路径会被缓存，
 已启动后再修改函数不能修复之前缓存的 RichOle 路径。
 每次需要此路径修复时都应使用启动器；普通 TIM 快捷方式不会应用内存补丁。
+开机自启入口也应指向此启动器，并可追加 `--background`，对应原有 TIM `/background`。
+使用同一 Python 环境的 `pythonw.exe` 可避免弹出控制台；启动结果写入本地
+`tools/launch_tim.log`（已排除提交）。请保留原自启入口备份，避免同时启动两份 TIM。
 用户已确认启动阶段内存修复后图片能够进入普通聊天输入框。
 只验证了 TIM 3.4.8.22124，Frida 是此启动器的额外依赖。
 

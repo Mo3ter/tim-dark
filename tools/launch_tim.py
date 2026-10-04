@@ -3,6 +3,9 @@ import argparse
 import json
 import pathlib
 import threading
+import sys
+import contextlib
+import traceback
 
 from patch_paste_path import ORIGINAL, SITE, build, layout
 
@@ -39,6 +42,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--tim-dir", required=True)
     ap.add_argument("--appdata-dir", required=True)
+    ap.add_argument("--background", action="store_true", help="保留 TIM 的 /background 后台启动方式")
     args = ap.parse_args()
     root = pathlib.Path(args.tim_dir).resolve()
     directory = str(pathlib.Path(args.appdata_dir).resolve())
@@ -56,7 +60,10 @@ def main():
         raise SystemExit("请先退出正在运行的 TIM，再使用此启动器")
     done = threading.Event()
     errors = []
-    pid = device.spawn([str(root / "Bin" / "TIM.exe")], cwd=str(root / "Bin"))
+    command = [str(root / "Bin" / "TIM.exe")]
+    if args.background:
+        command.append("/background")
+    pid = device.spawn(command, cwd=str(root / "Bin"))
     session = None
     resumed = False
     try:
@@ -88,4 +95,14 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    if sys.stdout is None:
+        # pythonw 自启没有终端，保留本地启动结果及失败信息。
+        with pathlib.Path(__file__).with_suffix(".log").open("a", encoding="utf-8") as log:
+            with contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):
+                try:
+                    main()
+                except BaseException:
+                    traceback.print_exc()
+                    raise
+    else:
+        main()

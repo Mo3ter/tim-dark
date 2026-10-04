@@ -23,3 +23,4 @@ shots/
 # python
 __pycache__/
 *.pyc
+tools/launch_tim.log
