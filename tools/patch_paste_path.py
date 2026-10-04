@@ -1,11 +1,10 @@
-"""本机 TIM 3.4.8 的 AppData 入口不可访问时，使用已验证的实际目录。
+"""旧版 TIM 3.4.8 图片路径磁盘补丁的状态检查与还原。
 
 只修改 TIM 的 KernelUtil.dll，不修改 Windows 目录入口或其他应用。
-安装前关闭 TIM；原 DLL 保存为 KernelUtil.dll.paste-path.orig。
+磁盘安装已停用；关闭 TIM 后还原备份，再使用 launch_tim.py 启动。
 """
 import argparse
 import pathlib
-import shutil
 import struct
 
 from patch_dll import parse_pe, rva_to_off, text_section, replace_locked
@@ -51,6 +50,8 @@ def main():
     for action in ("apply", "status", "revert"):
         actions.add_argument("--" + action, action="store_true")
     args = ap.parse_args()
+    if args.apply:
+        raise SystemExit("磁盘补丁可能触发 TIM 的 crsignv 文件检查；请先 --revert，再使用 launch_tim.py")
     dll = pathlib.Path(args.tim_dir) / "Bin" / "KernelUtil.dll"
     backup = dll.with_name(dll.name + ".paste-path.orig")
     data = dll.read_bytes()
@@ -68,28 +69,6 @@ def main():
             raise SystemExit("备份不是验证过的原始 DLL")
         print(replace_locked(str(backup), str(dll)))
         return
-    if not args.appdata_dir:
-        raise SystemExit("--apply 必须提供已验证的 --appdata-dir")
-    directory = str(pathlib.Path(args.appdata_dir).resolve())
-    target = pathlib.Path(directory) / "Tencent"
-    if not target.is_dir():
-        raise SystemExit("实际目录下没有 Tencent 数据目录")
-    if state == patch:
-        if not backup.exists() or build(backup.read_bytes(), directory) != data:
-            raise SystemExit("当前补丁或路径不一致，请先还原再安装")
-        print("paste path already patched")
-        return
-    result = build(data, directory)
-    if backup.exists() and backup.read_bytes() != data:
-        raise SystemExit("已有备份与当前原件不一致，拒绝覆盖")
-    if not backup.exists():
-        shutil.copyfile(dll, backup)
-    temp = dll.with_name(dll.name + ".paste-path.tmp")
-    temp.write_bytes(result)
-    try:
-        print(replace_locked(str(temp), str(dll)))
-    finally:
-        temp.unlink()
 
 
 if __name__ == "__main__":

@@ -7,9 +7,19 @@ from unittest.mock import patch
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "tools"))
 import patch_input
 import patch_paste_path
+import launch_tim
 
 
 class OptionalPatchTests(unittest.TestCase):
+    def test_runtime_plan_includes_terminator(self):
+        original = bytes(16) + patch_paste_path.ORIGINAL + bytes(488)
+        with patch.object(patch_paste_path, "layout", return_value=(16, 64, 0x200000, 448)), \
+             patch.object(launch_tim, "layout", return_value=(16, 64, 0x200000, 448)):
+            plan = launch_tim.runtime_plan(original, "D:\\Data")
+        self.assertEqual(bytes(plan["body"])[38:], ("D:\\Data\0").encode("utf-16-le"))
+        self.assertEqual(len(plan["patch"]), 8)
+        self.assertEqual(plan["original"], list(patch_paste_path.ORIGINAL))
+
     def test_input_changes_only_site_and_cave(self):
         original = bytes(16) + patch_input.ORIGINAL + bytes(226)
         body = bytes.fromhex("8b5424089cf7c2ffffff007505baffffff009d8d8114010000c3")

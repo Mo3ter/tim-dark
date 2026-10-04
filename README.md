@@ -65,16 +65,19 @@ python tools/patch_input.py --tim-dir "你的TIM安装目录" --revert
 本次排查发现，图片粘贴失败来自 AppData 挂载入口错误：TIM 能读取剪贴板图片，
 但无法写入 `WinTemp\RichOle`。还原文字补丁后问题仍存在。
 如果也遇到这类路径错误，并已找到包含原有 Tencent 数据的实际 AppData 目录，
-可以在关闭 TIM 后单独安装路径补丁：
+可以在关闭 TIM 后使用启动阶段的内存路径修复：
 
 ```powershell
-python tools/patch_paste_path.py --tim-dir "你的TIM安装目录" --appdata-dir "实际AppData目录" --apply
-python tools/patch_paste_path.py --tim-dir "你的TIM安装目录" --status
+# 如果装过旧版磁盘路径补丁，先还原一次
 python tools/patch_paste_path.py --tim-dir "你的TIM安装目录" --revert
+python -m pip install frida
+python tools/launch_tim.py --tim-dir "你的TIM安装目录" --appdata-dir "实际AppData目录"
 ```
 
-它只修改 TIM 的 `KernelUtil.dll`，无需后台注入；**不是所有用户都需要安装**。
-实际目录必须包含原有 `Tencent` 文件夹。该补丁也只验证了 **3.4.8.22124**。
+旧版磁盘补丁可能触发 TIM 的 `crsignv` 检查，显示错误 `0x80010001`，已停用 `--apply`。
+现在启动器只修改进程内存，磁盘 `KernelUtil.dll` 保持原件；完成后退出，无常驻记录器。
+这个可选启动器使用 Frida 短暂注入，每次启动都需要通过它运行；基础主题构建流程不变。
+实际目录必须包含原有 `Tencent` 文件夹。此方案只验证了 **3.4.8.22124**。
 详见 [图片粘贴路径修复](docs/PASTE-PATH.md)。
 
 ---
@@ -110,7 +113,8 @@ tools/
   skinpatch.py         重着色位图皮肤（.gft/.png），灰阶翻转 + 夜景压暗
   patch_dll.py         两处引擎补丁，支持 --status / --apply / --revert
   patch_input.py       3.4.8 聊天输入文字的可选白字补丁
-  patch_paste_path.py  AppData 挂载错误时的可选图片粘贴路径修复
+  patch_paste_path.py  旧版图片路径磁盘补丁的状态检查和还原
+  launch_tim.py        启动阶段图片路径内存修复（需要 Frida）
 docs/
   FORMATS.md           .rdb / .gft / .gmd 文件格式（逆向结果）
   TRAPS.md             踩过的十个坑，按踩进去的顺序排列

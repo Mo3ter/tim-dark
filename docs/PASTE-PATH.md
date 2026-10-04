@@ -1,5 +1,32 @@
 # 本机图片粘贴失败：AppData 挂载入口不可访问
 
+## 2026-10-05 更新：停用磁盘补丁，改为启动阶段内存修复
+
+旧版修改磁盘 `KernelUtil.dll` 后，其 Authenticode 状态为 `HashMismatch`，
+原始备份为 `Valid`。实机捕获到登录后 `AppUtil.dll` 的 `crsignv`
+回调显示“软件已被破坏”错误 `0x80010001`。还原这份 DLL 后，
+短时对照运行没有再捕获同样的错误；长期稳定性仍需继续观察。
+
+因此 `patch_paste_path.py --apply` 已停用，保留 `--status` 和 `--revert`。
+先关闭 TIM，已安装旧版补丁的用户执行一次 `--revert`。
+未安装过旧版补丁的用户跳过还原步骤：
+
+```powershell
+python tools/patch_paste_path.py --tim-dir 'TIM安装目录' --revert
+python -m pip install frida
+python tools/launch_tim.py --tim-dir 'TIM安装目录' --appdata-dir '实际AppData目录'
+```
+
+启动器验证原始指令与空代码洞，在 KernelUtil 模块初始化前写入原有路径修复指令。
+磁盘 DLL 保持原样；补丁完成后启动器解除连接并退出，TIM 继续运行。
+它不修改或关闭 TIM 的文件检查。必须在启动阶段应用，因为 AppData 路径会被缓存，
+已启动后再修改函数不能修复之前缓存的 RichOle 路径。
+每次需要此路径修复时都应使用启动器；普通 TIM 快捷方式不会应用内存补丁。
+用户已确认启动阶段内存修复后图片能够进入普通聊天输入框。
+只验证了 TIM 3.4.8.22124，Frida 是此启动器的额外依赖。
+
+下面记录的是旧版磁盘方案的诊断与实现，供分析参考，不再推荐安装。
+
 2026-10-04，TIM 3.4.8.22124 粘贴图片时，`OpenClipboard` 和
 `GetClipboardData(CF_BITMAP)` 均成功，但保存到
 `AppData/Roaming/Tencent/Users/<账号>/TIM/WinTemp/RichOle/*.png`
