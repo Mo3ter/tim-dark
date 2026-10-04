@@ -11,6 +11,8 @@
 再给它图形引擎里两处绘制调用打二进制补丁：不注入进程、不常驻后台、
 不影响点击和截图，**一条命令可以完整还原**。
 
+下面的基础资源和两个引擎补丁由 `build.ps1` 管理；另行安装的可选补丁需要用各自的 `--revert` 还原。
+
 ```
    原版 TIM                                tim-dark
    ────────                                ────────
@@ -41,6 +43,39 @@
 
 依赖：Python 3（含 Pillow）、PowerShell 5+、已安装 TIM 3.5.0.22149。
 如果 TIM 装在 `C:\Program Files\` 下，需要管理员权限。
+
+### 可选：聊天输入文字变白（TIM 3.4.8.22124）
+
+聊天输入区使用 TIM 自带的 `riched20.dll`，基础主题的文字补丁没有覆盖这条路径。
+新增的独立补丁只把绘制时 RGB 为黑的文字改成白色，保留其他字体颜色。
+关闭 TIM 后执行，再正常启动 TIM：
+
+```powershell
+python tools/patch_input.py --tim-dir "你的TIM安装目录" --apply
+python tools/patch_input.py --tim-dir "你的TIM安装目录" --status
+python tools/patch_input.py --tim-dir "你的TIM安装目录" --revert
+```
+
+该补丁已在 **3.4.8.22124** 实机验证；尚未验证 3.5。
+脚本校验原指令和代码洞，保留原始 DLL，不匹配时拒绝安装。
+详见 [输入文字补丁说明](docs/INPUT-WHITE.md)。
+
+### 可选：图片粘贴时临时目录不可访问
+
+本次排查发现，图片粘贴失败来自 AppData 挂载入口错误：TIM 能读取剪贴板图片，
+但无法写入 `WinTemp\RichOle`。还原文字补丁后问题仍存在。
+如果也遇到这类路径错误，并已找到包含原有 Tencent 数据的实际 AppData 目录，
+可以在关闭 TIM 后单独安装路径补丁：
+
+```powershell
+python tools/patch_paste_path.py --tim-dir "你的TIM安装目录" --appdata-dir "实际AppData目录" --apply
+python tools/patch_paste_path.py --tim-dir "你的TIM安装目录" --status
+python tools/patch_paste_path.py --tim-dir "你的TIM安装目录" --revert
+```
+
+它只修改 TIM 的 `KernelUtil.dll`，无需后台注入；**不是所有用户都需要安装**。
+实际目录必须包含原有 `Tencent` 文件夹。该补丁也只验证了 **3.4.8.22124**。
+详见 [图片粘贴路径修复](docs/PASTE-PATH.md)。
 
 ---
 
@@ -74,6 +109,8 @@ tools/
   makedark.py          appframework/config/theme.xml 的深色调色板
   skinpatch.py         重着色位图皮肤（.gft/.png），灰阶翻转 + 夜景压暗
   patch_dll.py         两处引擎补丁，支持 --status / --apply / --revert
+  patch_input.py       3.4.8 聊天输入文字的可选白字补丁
+  patch_paste_path.py  AppData 挂载错误时的可选图片粘贴路径修复
 docs/
   FORMATS.md           .rdb / .gft / .gmd 文件格式（逆向结果）
   TRAPS.md             踩过的十个坑，按踩进去的顺序排列
@@ -182,7 +219,7 @@ OVERRIDE = {
 | **个别面板没验证到** | 只在**一台机器、一个账号、一个版本**上验证过。部分面板（尤其走 Webkit 的）没有逐一确认 |
 | **代码洞依赖 `.text` 末尾空位** | 这个位置在其他版本里未必存在；没有做"找不到空位就放弃"的完整回退 |
 | **`.gmd` 解析是启发式的** | 两个扫描器叠加使用、按偏移去重，靠的是经验规律，不是官方格式文档。遇到没见过的记录类型可能漏改或误改 |
-| **没有自动化测试 / CI** | 只有手工验证脚本，而且验证靠"抓屏数像素"，很土 |
+| **自动化验证覆盖有限 / 暂无 CI** | 已增加输入框颜色分类与独立 DLL 补丁的合成数据回归测试；完整界面效果仍需实机验证。运行 `python -m unittest discover -s tests -v` |
 | **没有卸载程序** | 还原靠 `build.ps1 -Rollback`，得留着这份脚本和 `*.dll.orig` 备份 |
 
 如果你做出了更好的版本，非常欢迎 —— 这个仓库的价值大概就是**把踩过的坑记下来了**

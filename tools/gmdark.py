@@ -115,9 +115,9 @@ def decide_kind(name, argb, fname=""):
 
 
 def patch_file(path, dry=False):
-    is_input = 'inputframe' in path.lower()
     done_offsets = set()
-    buf = bytearray(open(path, "rb").read())
+    with open(path, "rb") as f:
+        buf = bytearray(f.read())
     changed = []
     for r in gmdscan.scan(bytes(buf)):
         name = r["text"]
@@ -148,7 +148,9 @@ def patch_file(path, dry=False):
                 if not dry:
                     buf[off:off + 4] = struct.pack("<I", ov)
             continue
-        kind = 'surface' if (is_input and classify(name)) else decide_kind(name, old, os.path.basename(path))
+        # 输入框也包含文字属性，不能把整个 inputframe 的颜色都当作背景。
+        # 背景/边框仍由属性名分类，AutoColor 的裸 color 仍作为亮度输入。
+        kind = decide_kind(name, old, bn)
         if not kind:
             continue
         new = transform(old, kind)
