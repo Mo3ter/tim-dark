@@ -8,6 +8,7 @@ import contextlib
 import traceback
 
 from patch_paste_path import ORIGINAL, SITE, build, layout
+from patch_temp_path import runtime_plan as temp_runtime_plan
 
 
 def runtime_plan(data, directory):
@@ -20,9 +21,29 @@ def runtime_plan(data, directory):
             "body": list(result[cave:cave + length])}
 
 
-def injection_source(plan):
-    return "const plan=" + json.dumps(plan) + ";" + r"""
+def injection_source(plan, temp_plan):
+    return "const plan=" + json.dumps(plan) + ";const temp=" + json.dumps(temp_plan) + ";" + r"""
+let inputReady = false, tempReady = false;
+function reportReady() { if (inputReady && tempReady) send({ready: true}); }
 Process.attachModuleObserver({onAdded(m) {
+    if (m.name.toLowerCase() === 'common.dll') {
+        try {
+            const address = m.base.add(temp.cache).toUInt32();
+            const expected = [0xa1];
+            const body = temp.body.slice();
+            for (let i = 0; i < 4; i++) {
+                const byte = (address >>> (i * 8)) & 255;
+                expected.push(byte); body[6 + i] = byte; body[33 + i] = byte;
+            }
+            const site = m.base.add(temp.site);
+            if (Array.from(new Uint8Array(site.readByteArray(5))).join(',') !== expected.join(','))
+                throw Error('Loaded Common.dll instructions do not match');
+            Memory.patchCode(m.base.add(temp.cave), body.length, p => p.writeByteArray(body));
+            Memory.patchCode(site, temp.patch.length, p => p.writeByteArray(temp.patch));
+            tempReady = true; reportReady();
+        } catch (e) { send({error: String(e)}); }
+        return;
+    }
     if (m.name.toLowerCase() !== 'kernelutil.dll') return;
     try {
         const site = m.base.add(plan.site);
@@ -32,7 +53,7 @@ Process.attachModuleObserver({onAdded(m) {
         Memory.patchCode(m.base.add(plan.cave), plan.body.length,
                          p => p.writeByteArray(plan.body));
         Memory.patchCode(site, plan.patch.length, p => p.writeByteArray(plan.patch));
-        send({ready: true});
+        inputReady = true; reportReady();
     } catch (e) { send({error: String(e)}); }
 }});
 """
@@ -51,6 +72,8 @@ def main():
     dll = root / "Bin" / "KernelUtil.dll"
     data = dll.read_bytes()
     plan = runtime_plan(data, directory)
+    temp_plan = temp_runtime_plan((root / "Bin" / "Common.dll").read_bytes(), directory)
+    (pathlib.Path(directory) / "Tencent" / "QQTempSys").mkdir(exist_ok=True)
     backup = dll.with_name(dll.name + ".paste-path.orig")
     if backup.exists() and backup.read_bytes() != data:
         raise SystemExit("请先用 patch_paste_path.py --revert 还原磁盘 DLL")
@@ -68,7 +91,7 @@ def main():
     resumed = False
     try:
         session = device.attach(pid)
-        script = session.create_script(injection_source(plan))
+        script = session.create_script(injection_source(plan, temp_plan))
 
         def receive(message, _data):
             payload = message.get("payload", {})
@@ -83,7 +106,7 @@ def main():
         device.resume(pid)
         resumed = True
         if not done.wait(30):
-            raise RuntimeError("30 秒内没有加载 KernelUtil.dll，路径补丁未应用")
+            raise RuntimeError("30 秒内没有完成 KernelUtil/Common 路径补丁")
         if errors:
             raise RuntimeError("; ".join(errors))
         print("TIM 图片路径修复已在启动阶段应用；磁盘 DLL 未修改")

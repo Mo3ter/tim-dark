@@ -75,7 +75,8 @@ python tools/launch_tim.py --tim-dir "你的TIM安装目录" --appdata-dir "实�
 ```
 
 旧版磁盘补丁可能触发 TIM 的 `crsignv` 检查，显示错误 `0x80010001`，已停用 `--apply`。
-现在启动器只修改进程内存，磁盘 `KernelUtil.dll` 保持原件；完成后退出，无常驻记录器。
+现在启动器只修改进程内存，磁盘 `KernelUtil.dll` 与 `Common.dll` 保持原件；完成后退出，无常驻记录器。
+修复覆盖输入框 RichOle 与群聊收藏表情 QQTempSys 两条缓存路径。
 这个可选启动器使用 Frida 短暂注入，每次启动都需要通过它运行；基础主题构建流程不变。
 实际目录必须包含原有 `Tencent` 文件夹。此方案只验证了 **3.4.8.22124**。
 详见 [图片粘贴路径修复](docs/PASTE-PATH.md)。
@@ -115,6 +116,7 @@ tools/
   patch_input.py       3.4.8 聊天输入文字的可选白字补丁
   patch_paste_path.py  旧版图片路径磁盘补丁的状态检查和还原
   launch_tim.py        启动阶段图片路径内存修复（需要 Frida）
+  patch_temp_path.py   群聊收藏表情 QQTempSys 路径初始化补丁计划
 docs/
   FORMATS.md           .rdb / .gft / .gmd 文件格式（逆向结果）
   TRAPS.md             踩过的十个坑，按踩进去的顺序排列

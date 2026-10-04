@@ -1,5 +1,18 @@
 # 本机图片粘贴失败：AppData 挂载入口不可访问
 
+## 群聊收藏表情路径补充
+
+群聊发送收藏表情（包括文字与表情混合消息）还会通过 Common.dll 的
+`Util::FS::GetTempPathW` 使用独立的 `Tencent/QQTempSys` 缓存路径。
+实机记录到此路径在旧 AppData 入口上读写返回 Windows 错误 649；
+将缓存改为实际目录后，用户确认上述两种群聊发送都恢复正常。
+
+启动器现在同时修复 Common.dll 的路径初始化：在系统路径 API 返回后、
+计算字符串长度并追加 Tencent/QQTempSys 前覆盖 AppData 根目录。
+原来的目录创建、缓存、锁和字符串管理流程继续执行。
+Common.dll 采用已验证原件的 SHA-256 白名单；两处模块补丁完成后才解除连接。
+同样只修改进程内存，磁盘 DLL 和开机自启入口的调用方式不变。
+
 ## 2026-10-05 更新：停用磁盘补丁，改为启动阶段内存修复
 
 旧版修改磁盘 `KernelUtil.dll` 后，其 Authenticode 状态为 `HashMismatch`，

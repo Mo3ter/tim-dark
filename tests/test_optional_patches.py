@@ -8,9 +8,14 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "tools"))
 import patch_input
 import patch_paste_path
 import launch_tim
+import patch_temp_path
 
 
 class OptionalPatchTests(unittest.TestCase):
+    def test_temp_path_rejects_unverified_dll(self):
+        with self.assertRaisesRegex(ValueError, "Common.dll"):
+            patch_temp_path.runtime_plan(bytes(512), "D:\\Data")
+
     def test_runtime_plan_includes_terminator(self):
         original = bytes(16) + patch_paste_path.ORIGINAL + bytes(488)
         with patch.object(patch_paste_path, "layout", return_value=(16, 64, 0x200000, 448)), \
